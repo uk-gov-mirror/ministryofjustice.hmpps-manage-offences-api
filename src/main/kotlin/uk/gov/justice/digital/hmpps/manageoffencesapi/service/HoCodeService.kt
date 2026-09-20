@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import uk.gov.justice.digital.hmpps.manageoffencesapi.entity.HoCodesLoadHistory
+import uk.gov.justice.digital.hmpps.manageoffencesapi.entity.Offence
 import uk.gov.justice.digital.hmpps.manageoffencesapi.entity.OffenceToSyncWithNomis
 import uk.gov.justice.digital.hmpps.manageoffencesapi.entity.PreviousOffenceToHoCodeMapping
 import uk.gov.justice.digital.hmpps.manageoffencesapi.enum.AnalyticalPlatformTableName.HO_CODES
@@ -77,9 +78,6 @@ class HoCodeService(
     }
   }
 
-  // There is an assumption that ho-code-to-offence mappings are never deleted, therefore we don't cater for such a scenario
-  // We do cater for updates though (e.g. changing a ho-code associated with an offence)
-  // Have switched 'batch inserts' on to aid performance on this functionality. ~20k records to process every time
   private fun loadMappingData() {
     val offences = offenceRepository.findByCategoryIsNotNullAndSubCategoryIsNotNull()
     val previousMappings = offences.map {
@@ -98,6 +96,8 @@ class HoCodeService(
     val filesToProcess = mappingFileKeys.minus(alreadyLoadedFiles.map { it.loadedFile }.toSet())
     log.info("${filesToProcess.size} mapping files to process")
 
+    val mappedCodesInRelease = mutableSetOf<String>()
+
     filesToProcess.forEach { fileKey ->
       log.info("Processing $fileKey")
       val mappingsToLoad =
@@ -105,6 +105,7 @@ class HoCodeService(
           .map { it as HomeOfficeCodeToOffenceMapping }
           .filter { it.latestRecord }
       val mappingsByCode = mappingsToLoad.associateBy { it.offenceCode }
+      mappedCodesInRelease.addAll(mappingsByCode.keys)
       val offencesToUpdate = offenceRepository.findByCodeIgnoreCaseIn(
         mappingsToLoad
           .map { it.offenceCode }.toSet(),
@@ -117,19 +118,58 @@ class HoCodeService(
         }
 
       offenceRepository.saveAll(offencesToUpdate)
-      val offencesToSyncWithNomis = offencesToUpdate
-        .filter { it.homeOfficeStatsCode != previousMappingsByOffenceCode[it.code]?.homeOfficeCode }
-        .filter { !offenceToSyncWithNomisRepository.existsByOffenceCodeAndNomisSyncType(it.code, HO_CODE_UPDATE) }
-        .map {
-          OffenceToSyncWithNomis(
-            offenceCode = it.code,
-            nomisSyncType = HO_CODE_UPDATE,
-          )
-        }
-      log.info("There are ${offencesToSyncWithNomis.size} offences with HO Code changes that need updating in NOMIS")
-      offenceToSyncWithNomisRepository.saveAll(offencesToSyncWithNomis)
+      queueHoCodeChangesForNomis(offencesToUpdate, previousMappingsByOffenceCode)
       hoCodesLoadHistoryRepository.save(HoCodesLoadHistory(loadedFile = fileKey))
     }
+
+    if (filesToProcess.isNotEmpty() && filesToProcess.size == mappingFileKeys.size) {
+      inheritHoCodesForChildOffences(mappedCodesInRelease, previousMappingsByOffenceCode)
+    } else if (filesToProcess.isNotEmpty()) {
+      log.info("Not re-inheriting HO codes for child offences - only ${filesToProcess.size} of ${mappingFileKeys.size} mapping files were processed")
+    }
+  }
+
+  private fun inheritHoCodesForChildOffences(
+    mappedCodesInRelease: Set<String>,
+    previousMappingsByOffenceCode: Map<String, PreviousOffenceToHoCodeMapping>,
+  ) {
+    offenceRepository.flush()
+    val childOffences = offenceRepository.findByParentOffenceIdIsNotNull()
+    val parentsById = offenceRepository.findAllById(childOffences.mapNotNull { it.parentOffenceId }.toSet())
+      .associateBy { it.id }
+
+    val offencesToUpdate = childOffences
+      .filter { !mappedCodesInRelease.contains(it.code) }
+      .mapNotNull { child ->
+        val parent = parentsById[child.parentOffenceId] ?: return@mapNotNull null
+        if (child.isEncouragementOf(parent)) return@mapNotNull null
+        if (parent.category == null) return@mapNotNull null
+        if (child.category == parent.category && child.subCategory == parent.subCategory) return@mapNotNull null
+        child.copy(category = parent.category, subCategory = parent.subCategory)
+      }
+
+    if (offencesToUpdate.isEmpty()) return
+    log.info("There are ${offencesToUpdate.size} child offences inheriting the HO code of their parent")
+    offenceRepository.saveAll(offencesToUpdate)
+    queueHoCodeChangesForNomis(offencesToUpdate, previousMappingsByOffenceCode)
+  }
+
+  private fun queueHoCodeChangesForNomis(
+    offencesToUpdate: List<Offence>,
+    previousMappingsByOffenceCode: Map<String, PreviousOffenceToHoCodeMapping>,
+  ) {
+    val offencesToSyncWithNomis = offencesToUpdate
+      .filter { it.homeOfficeStatsCode != previousMappingsByOffenceCode[it.code]?.homeOfficeCode }
+      .filter { !offenceToSyncWithNomisRepository.existsByOffenceCodeAndNomisSyncType(it.code, HO_CODE_UPDATE) }
+      .map {
+        OffenceToSyncWithNomis(
+          offenceCode = it.code,
+          nomisSyncType = HO_CODE_UPDATE,
+        )
+      }
+    if (offencesToSyncWithNomis.isEmpty()) return
+    log.info("There are ${offencesToSyncWithNomis.size} offences with HO Code changes that need updating in NOMIS")
+    offenceToSyncWithNomisRepository.saveAll(offencesToSyncWithNomis)
   }
 
   private fun getLatestLoadDirectory(s3BasePath: String): String {

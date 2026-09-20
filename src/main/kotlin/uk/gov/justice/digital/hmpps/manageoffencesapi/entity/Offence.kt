@@ -39,8 +39,6 @@ data class Offence(
   val changedDate: LocalDateTime,
   val createdDate: LocalDateTime = LocalDateTime.now(),
   val lastUpdatedDate: LocalDateTime = LocalDateTime.now(),
-  // The maxPeriodIsLife and maxPeriodOfIndictmentYears columns were originally populated via the schedule data supplied by the HMCTS NSD team
-  // The maxPeriodIsLife and maxPeriodOfIndictment* columns were then supplemented with a spreadsheet titled 'PNLD List 2003'
   val maxPeriodIsLife: Boolean? = false,
   val maxPeriodOfIndictmentYears: Int? = null,
   val maxPeriodOfIndictmentMonths: Int? = null,
@@ -80,4 +78,12 @@ data class Offence(
     }
   val severityRanking: String
     get() = if (category == null || category == 0) "99" else category.toString()
+
+  fun isEncouragementOf(parent: Offence): Boolean = code == parent.code + "E"
+
+  fun inheritHoCodeIfNull(parent: Offence): Offence = if (category == null && subCategory == null && parent.category != null && !isEncouragementOf(parent)) {
+    copy(category = parent.category, subCategory = parent.subCategory)
+  } else {
+    this
+  }
 }

@@ -32,6 +32,38 @@ class OffenceTest {
     assertThat(of.homeOfficeStatsCode).isEqualTo("012/05")
   }
 
+  @Test
+  fun `An inchoate offence with no ho code takes the code of its parent`() {
+    val parent = BASE_OFFENCE.copy(code = "AABB011", category = 12, subCategory = 5)
+    val child = BASE_OFFENCE.copy(code = "AABB011A")
+
+    assertThat(child.inheritHoCodeIfNull(parent).homeOfficeStatsCode).isEqualTo("012/05")
+  }
+
+  @Test
+  fun `An inchoate offence with a ho code of its own is unchanged`() {
+    val parent = BASE_OFFENCE.copy(code = "AABB011", category = 12, subCategory = 5)
+    val child = BASE_OFFENCE.copy(code = "AABB011A", category = 2, subCategory = 0)
+
+    assertThat(child.inheritHoCodeIfNull(parent)).isEqualTo(child)
+  }
+
+  @Test
+  fun `An inchoate offence whose parent has no ho code is unchanged`() {
+    val parent = BASE_OFFENCE.copy(code = "AABB011")
+    val child = BASE_OFFENCE.copy(code = "AABB011A")
+
+    assertThat(child.inheritHoCodeIfNull(parent)).isEqualTo(child)
+  }
+
+  @Test
+  fun `An encouragement offence is unchanged - it is maintained from its parent separately`() {
+    val parent = BASE_OFFENCE.copy(code = "AABB011", category = 12, subCategory = 5)
+    val child = BASE_OFFENCE.copy(code = "AABB011E")
+
+    assertThat(child.inheritHoCodeIfNull(parent)).isEqualTo(child)
+  }
+
   companion object {
     private val BASE_OFFENCE = Offence(
       code = "AABB011",

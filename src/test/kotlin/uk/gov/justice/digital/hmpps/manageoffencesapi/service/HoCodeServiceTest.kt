@@ -195,6 +195,46 @@ class HoCodeServiceTest {
     }
   }
 
+  @Nested
+  inner class ChildOffenceHoCodeInheritanceTests {
+    @Test
+    fun `Child offences with no mapping of their own inherit the ho code of their parent`() {
+      stubReleaseContaining(listOf(MAPPING_2, MAPPING_CHILD_WITH_OWN_MAPPING))
+
+      whenever(
+        offenceRepository.findByCodeIgnoreCaseIn(
+          setOf(MAPPING_2.offenceCode, MAPPING_CHILD_WITH_OWN_MAPPING.offenceCode),
+        ),
+      ).thenReturn(listOf(PARENT_OFFENCE, CHILD_WITH_OWN_MAPPING))
+
+      whenever(offenceRepository.findByParentOffenceIdIsNotNull()).thenReturn(
+        listOf(CHILD_ATTEMPT, CHILD_WITH_OWN_MAPPING, CHILD_ENCOURAGEMENT, CHILD_OF_UNMAPPED_PARENT),
+      )
+      whenever(offenceRepository.findAllById(setOf(PARENT_OFFENCE.id, UNMAPPED_PARENT_OFFENCE.id))).thenReturn(
+        listOf(PARENT_OFFENCE.copy(category = 567, subCategory = 89), UNMAPPED_PARENT_OFFENCE),
+      )
+
+      hoCodeService.fullLoadOfHomeOfficeCodes()
+
+      verify(offenceRepository).saveAll(
+        listOf(CHILD_ATTEMPT.copy(category = 567, subCategory = 89)),
+      )
+    }
+
+    private fun stubReleaseContaining(mappings: List<HomeOfficeCodeToOffenceMapping>) {
+      whenever(adminService.isFeatureEnabled(Feature.SYNC_HOME_OFFICE_CODES)).thenReturn(true)
+      whenever(awsS3Service.getSubDirectories(HO_CODES.s3BasePath)).thenReturn(SUB_DIRECTORIES_HO_CODE)
+      whenever(awsS3Service.getSubDirectories(HO_CODES_TO_OFFENCE_MAPPING.s3BasePath)).thenReturn(SUB_DIRECTORIES_MAPPINGS)
+      whenever(awsS3Service.getKeysInPath(LATEST_FOLDER_PATH_HO_CODE)).thenReturn(setOf(HO_FILE_1_KEY))
+      whenever(awsS3Service.getKeysInPath(LATEST_FOLDER_PATH_MAPPINGS)).thenReturn(setOf(MAPPING_FILE_1_KEY))
+      whenever(hoCodesLoadHistoryRepository.findByLoadedFileIn(any())).thenReturn(emptySet())
+      whenever(awsS3Service.loadParquetFileContents(HO_FILE_1_KEY, HO_CODES.mappingClass)).thenReturn(emptyList())
+      whenever(
+        awsS3Service.loadParquetFileContents(MAPPING_FILE_1_KEY, HO_CODES_TO_OFFENCE_MAPPING.mappingClass),
+      ).thenReturn(mappings)
+    }
+  }
+
   companion object {
     private val LATEST_FOLDER_PATH_HO_CODE = HO_CODES.s3BasePath + "extraction_timestamp=" + "2023-05-07T03:04:11.984/"
     private val LATEST_FOLDER_PATH_MAPPINGS =
@@ -233,5 +273,14 @@ class HoCodeServiceTest {
     val OFFENCE_2 = BASE_OFFENCE.copy(code = "OFF2", category = 12, subCategory = 34)
     val OFFENCE_3 = BASE_OFFENCE.copy(code = "OFF3", category = 56, subCategory = 78)
     val OFFENCE_4 = BASE_OFFENCE.copy(code = "OFF4")
+
+    val PARENT_OFFENCE = BASE_OFFENCE.copy(id = 1, code = "OFF2")
+    val CHILD_ATTEMPT = BASE_OFFENCE.copy(id = 2, code = "OFF2A", parentOffenceId = 1)
+    val CHILD_WITH_OWN_MAPPING = BASE_OFFENCE.copy(id = 3, code = "OFF2C", parentOffenceId = 1)
+    val CHILD_ENCOURAGEMENT = BASE_OFFENCE.copy(id = 4, code = "OFF2E", parentOffenceId = 1)
+    val UNMAPPED_PARENT_OFFENCE = BASE_OFFENCE.copy(id = 5, code = "OFF5")
+    val CHILD_OF_UNMAPPED_PARENT = BASE_OFFENCE.copy(id = 6, code = "OFF5A", parentOffenceId = 5)
+    val MAPPING_CHILD_WITH_OWN_MAPPING =
+      HomeOfficeCodeToOffenceMapping(hoCode = "00200", offenceCode = "OFF2C", latestRecord = true)
   }
 }

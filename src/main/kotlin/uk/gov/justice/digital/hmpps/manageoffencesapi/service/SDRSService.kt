@@ -150,7 +150,7 @@ class SDRSService(
       .filter { it.parentCode != null }
       .forEach { child ->
         offenceRepository.findOneByCode(child.parentCode!!).ifPresent { parent ->
-          offenceRepository.save(child.copy(parentOffenceId = parent.id))
+          offenceRepository.save(child.copy(parentOffenceId = parent.id).inheritHoCodeIfNull(parent))
           offenceRepository.flush()
         }
         scheduleService.linkOffenceToParentSchedules(child)

@@ -34,6 +34,8 @@ interface OffenceRepository : JpaRepository<Offence, Long> {
 
   fun findByParentOffenceIdIn(parentOffenceIds: Set<Long>): List<Offence>
 
+  fun findByParentOffenceIdIsNotNull(): List<Offence>
+
   fun deleteByParentOffenceIdIsNotNull()
 
   fun findByCodeIgnoreCaseIn(codes: Set<String>): List<Offence>
