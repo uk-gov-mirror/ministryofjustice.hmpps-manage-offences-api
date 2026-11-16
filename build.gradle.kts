@@ -27,7 +27,7 @@ dependencies {
   runtimeOnly("io.jsonwebtoken:jjwt-impl:0.13.0")
   runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
 
-  implementation("uk.gov.justice.service.hmpps:hmpps-kotlin-spring-boot-starter:3.0.3")
+  implementation("uk.gov.justice.service.hmpps:hmpps-kotlin-spring-boot-starter:3.1.0")
   implementation("org.springframework.boot:spring-boot-starter-security")
   implementation("org.springframework.boot:spring-boot-starter-webflux")
   implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
@@ -43,8 +43,8 @@ dependencies {
 
   implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
 
-  implementation("net.javacrumbs.shedlock:shedlock-spring:7.10.1")
-  implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
+  implementation("net.javacrumbs.shedlock:shedlock-spring:7.11.0")
+  implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.11.0")
 
   implementation("io.awspring.cloud:spring-cloud-aws-starter-s3:4.2.1")
   implementation("software.amazon.awssdk:sts")
@@ -65,7 +65,7 @@ dependencies {
     exclude(group = "io.swagger.parser.v3", module = "swagger-parser-v2-converter")
   }
   testImplementation("org.wiremock:wiremock-standalone:3.13.2")
-  testImplementation("io.opentelemetry:opentelemetry-sdk-testing:1.67.0")
+  testImplementation("io.opentelemetry:opentelemetry-sdk-testing:1.68.0")
   testImplementation("org.testcontainers:postgresql:1.21.4")
   testImplementation("org.apache.commons:commons-csv:1.14.1")
 }
